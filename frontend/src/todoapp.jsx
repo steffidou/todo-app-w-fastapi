@@ -2,10 +2,7 @@ import React, { useState, useEffect } from "react";
 import "./index.css";
 
 function App() {
-  const [tasks, setTasks] = useState(() => {
-    const saved = localStorage.getItem("tasks");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [tasks, setTasks] = useState([]);
   const [filter, setFilter] = useState("all");
   const [taskInput, setTaskInput] = useState("");
   const [darkMode, setDarkMode] = useState(() => {
@@ -14,37 +11,68 @@ function App() {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
 
+  const API_URL = "https://todo-app-w-fastapi.onrender.com/todos/";
+
+  // Fetch tasks from backend on mount
+  useEffect(() => {
+    fetch(API_URL)
+      .then((res) => res.json())
+      .then((data) => setTasks(data))
+      .catch((err) => console.error("Error fetching todos:", err));
+  }, []);
+
   useEffect(() => {
     document.body.classList.toggle("dark-mode", darkMode);
     localStorage.setItem("darkMode", darkMode);
   }, [darkMode]);
 
-  useEffect(() => {
-    localStorage.setItem("tasks", JSON.stringify(tasks));
-  }, [tasks]);
-
   const addTask = () => {
     if (taskInput.trim() !== "") {
       const newTask = {
-        id: Date.now(),
         title: taskInput,
         completed: false,
       };
-      setTasks([...tasks, newTask]);
-      setTaskInput("");
+      fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newTask),
+      })
+        .then((res) => res.json())
+        .then((createdTask) => {
+          setTasks([...tasks, createdTask]);
+          setTaskInput("");
+        })
+        .catch((err) => console.error("Error adding task:", err));
     }
   };
 
   const toggleTask = (taskId) => {
-    setTasks(
-      tasks.map((task) =>
-        task.id === taskId ? { ...task, completed: !task.completed } : task
-      )
-    );
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    const updatedTask = { ...task, completed: !task.completed };
+
+    fetch(`${API_URL}${taskId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedTask),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        setTasks(tasks.map((t) => (t.id === taskId ? data : t)));
+      })
+      .catch((err) => console.error("Error toggling task:", err));
   };
 
   const deleteTask = (taskId) => {
-    setTasks(tasks.filter((task) => task.id !== taskId));
+    fetch(`${API_URL}${taskId}`, {
+      method: "DELETE",
+    })
+      .then((res) => res.json())
+      .then(() => {
+        setTasks(tasks.filter((task) => task.id !== taskId));
+      })
+      .catch((err) => console.error("Error deleting task:", err));
   };
 
   const enableEditing = (taskId, title) => {
@@ -53,12 +81,22 @@ function App() {
   };
 
   const saveEdit = (taskId) => {
-    setTasks(
-      tasks.map((task) =>
-        task.id === taskId ? { ...task, title: editText } : task
-      )
-    );
-    setEditingId(null);
+    const updatedTask = tasks.find((task) => task.id === taskId);
+    if (!updatedTask) return;
+
+    const updatedData = { ...updatedTask, title: editText };
+
+    fetch(`${API_URL}${taskId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedData),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        setTasks(tasks.map((task) => (task.id === taskId ? data : task)));
+        setEditingId(null);
+      })
+      .catch((err) => console.error("Error saving edit:", err));
   };
 
   const filteredTasks = tasks.filter((task) => {
